@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Resizer & Format Converter</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(45deg, #2196F3, #21CBF3);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin-bottom: 10px;
+            font-size: 2.2em;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .upload-section {
+            padding: 40px;
+        }
+
+        .upload-area {
+            border: 3px dashed #ddd;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: #fafafa;
+        }
+
+        .upload-area:hover {
+            border-color: #2196F3;
+            background: #f0f8ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #2196F3;
+            background: #e3f2fd;
+        }
+
+        .upload-icon {
+            font-size: 3em;
+            color: #ccc;
+            margin-bottom: 15px;
+        }
+
+        .upload-text {
+            font-size: 1.2em;
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #2196F3, #21CBF3);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(33, 150, 243, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .preview-section {
+            display: none;
+            padding: 20px 40px;
+            border-top: 1px solid #eee;
+        }
+
+        .preview-container {
+            display: flex;
+            gap: 30px;
+            align-items: flex-start;
+        }
+
+        .preview-box {
+            flex: 1;
+            text-align: center;
+        }
+
+        .preview-box h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .preview-image {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+        }
+
+        .image-info {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            color: #666;
+            text-align: left;
+        }
+
+        .processing {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2196F3;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result-section {
+            display: none;
+            padding: 20px 40px;
+            border-top: 1px solid #eee;
+            background: #f9f9f9;
+        }
+
+        .result-success {
+            background: #e8f5e8;
+            border-left: 4px solid #4caf50;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .result-error {
+            background: #ffeaea;
+            border-left: 4px solid #f44336;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .download-btn {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            margin-top: 15px;
+        }
+
+        .reset-btn {
+            background: linear-gradient(45deg, #ff9800, #f57c00);
+            margin-left: 10px;
+        }
+
+        .image-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .image-card img {
+            max-width: 100%;
+            max-height: 120px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        .image-card h4 {
+            margin-bottom: 8px;
+            font-size: 0.9em;
+            color: #333;
+            word-break: break-word;
+        }
+
+        .image-card .info {
+            font-size: 0.8em;
+            color: #666;
+            line-height: 1.4;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .result-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .result-success {
+            border-left: 4px solid #4caf50;
+            background: #f8fff8;
+        }
+
+        .result-error {
+            border-left: 4px solid #f44336;
+            background: #fff8f8;
+        }
+
+        .summary-stats {
+            background: #e3f2fd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        @media (max-width: 768px) {
+            .preview-container {
+                flex-direction: column;
+            }
+            
+            .container {
+                margin: 10px;
+            }
+            
+            .upload-section {
+                padding: 20px;
+            }
+
+            .results-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🖼️ Image Processor</h1>
+            <p>Upload multiple PNG/WebP images → Crop/resize to 720×480 (16:9) → Convert to WebP (under 50KB) → Remove metadata</p>
+        </div>
+
+        <div class="upload-section">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <div class="upload-text">Drag & drop multiple images here or click to browse</div>
+                <input type="file" id="fileInput" class="file-input" accept=".png,.webp" multiple />
+                <div style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                    No file size limit • PNG and WebP only • Centered crop to 16:9 • Output: under 50KB WebP
+                </div>
+            </div>
+        </div>
+
+        <div class="preview-section" id="previewSection">
+            <h2>Selected Images</h2>
+            <div id="imagesContainer" style="display: grid; gap: 20px; margin-bottom: 20px;"></div>
+            <div style="text-align: center; padding: 20px; background: #f5f5f5; border-radius: 10px;">
+                <h3>Processing Settings</h3>
+                <div style="margin: 15px 0; color: #666;">
+                    <strong>Target Size:</strong> 720 × 480px (16:9 aspect ratio)<br>
+                    <strong>Processing:</strong> Centered crop (no stretching/distortion)<br>
+                    <strong>Output Format:</strong> WebP<br>
+                    <strong>File Size Target:</strong> Under 50KB<br>
+                    <strong>Quality:</strong> Adaptive (auto-optimized)<br>
+                    <strong>Metadata:</strong> Removed<br>
+                    <strong>Filename:</strong> Original name preserved<br>
+                </div>
+                <button class="btn" id="processBtn" onclick="processImages()">Process All Images</button>
+            </div>
+        </div>
+
+        <div class="processing" id="processingSection" style="display: none;">
+            <div class="loader"></div>
+            <p>Processing your image...</p>
+        </div>
+
+        <div class="result-section" id="resultSection">
+            <div id="resultMessage"></div>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const previewSection = document.getElementById('previewSection');
+        const processingSection = document.getElementById('processingSection');
+        const resultSection = document.getElementById('resultSection');
+        const imagesContainer = document.getElementById('imagesContainer');
+        const processBtn = document.getElementById('processBtn');
+
+        let selectedFiles = [];
+
+        // Drag and drop handlers
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            handleFiles(Array.from(e.dataTransfer.files));
+        });
+
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFiles(Array.from(e.target.files));
+            }
+        });
+
+        function handleFiles(files) {
+            // Filter valid files
+            const validFiles = files.filter(file => ['image/png', 'image/webp'].includes(file.type));
+            
+            if (validFiles.length === 0) {
+                alert('Please select PNG or WebP image files.');
+                return;
+            }
+
+            if (validFiles.length !== files.length) {
+                alert(`${files.length - validFiles.length} files were skipped (only PNG and WebP are supported).`);
+            }
+
+            selectedFiles = validFiles;
+            displayImagePreviews();
+            previewSection.style.display = 'block';
+            resultSection.style.display = 'none';
+        }
+
+        function displayImagePreviews() {
+            imagesContainer.innerHTML = '';
+            imagesContainer.style.display = 'grid';
+            imagesContainer.style.gridTemplateColumns = 'repeat(auto-fill, minmax(200px, 1fr))';
+            imagesContainer.style.gap = '15px';
+
+            selectedFiles.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const card = document.createElement('div');
+                        card.className = 'image-card';
+                        card.innerHTML = `
+                            <img src="${e.target.result}" alt="${file.name}" />
+                            <h4>${file.name}</h4>
+                            <div class="info">
+                                <strong>Size:</strong> ${formatFileSize(file.size)}<br>
+                                <strong>Dimensions:</strong> ${img.width} × ${img.height}px<br>
+                                <strong>Format:</strong> ${file.type.split('/')[1].toUpperCase()}
+                            </div>
+                        `;
+                        imagesContainer.appendChild(card);
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+
+            processBtn.textContent = `Process ${selectedFiles.length} Image${selectedFiles.length > 1 ? 's' : ''}`;
+        }
+
+        async function processImages() {
+            if (selectedFiles.length === 0) return;
+
+            // Show processing
+            processingSection.style.display = 'block';
+            resultSection.style.display = 'none';
+            processBtn.disabled = true;
+
+            try {
+                const formData = new FormData();
+                selectedFiles.forEach(file => {
+                    formData.append('images', file);
+                });
+
+                const response = await fetch('/api/process-image', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                processingSection.style.display = 'none';
+                resultSection.style.display = 'block';
+                processBtn.disabled = false;
+
+                displayResults(result);
+            } catch (error) {
+                processingSection.style.display = 'none';
+                resultSection.style.display = 'block';
+                processBtn.disabled = false;
+                
+                document.getElementById('resultMessage').innerHTML = `
+                    <div class="result-error">
+                        <h3>❌ Processing failed</h3>
+                        <p>${error.message}</p>
+                        <button class="btn reset-btn" onclick="resetForm()">🔄 Try Again</button>
+                    </div>
+                `;
+            }
+        }
+
+        function displayResults(result) {
+            const { success, message, totalFiles, successCount, results } = result;
+            
+            let html = `
+                <div class="summary-stats">
+                    <h3>${success ? '✅' : '❌'} ${message}</h3>
+                    <p><strong>${successCount}</strong> of <strong>${totalFiles}</strong> images processed successfully</p>
+                </div>
+            `;
+
+            if (successCount > 0) {
+                html += `<div style="text-align: center; margin-bottom: 20px;">
+                    <button class="btn download-btn" onclick="downloadAllImages()">
+                        📦 Download All Processed Images
+                    </button>
+                    <button class="btn reset-btn" onclick="resetForm()">
+                        🔄 Process More Images
+                    </button>
+                </div>`;
+            }
+
+            html += '<div class="results-grid">';
+            
+            results.forEach(item => {
+                if (item.success) {
+                    html += `
+                        <div class="result-card ${item.quality > 75 ? 'result-success' : 'result-error'}">
+                            <h4>✅ ${item.originalName}</h4>
+                            <div style="margin: 10px 0; font-size: 0.9em;">
+                                <strong>Output:</strong> ${item.processedFilename}<br>
+                                <strong>Size:</strong> ${item.sizeKB}KB (under 50KB ✅)<br>
+                                <strong>Dimensions:</strong> ${item.dimensions}<br>
+                                <strong>Quality:</strong> ${item.quality}% (auto-optimized)<br>
+                                <strong>Format:</strong> ${item.format}
+                            </div>
+                            <button class="btn download-btn" onclick="downloadImage('${item.downloadUrl}', '${item.processedFilename}')" style="font-size: 0.8em; padding: 8px 15px;">
+                                📥 Download
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    html += `
+                        <div class="result-card result-error">
+                            <h4>❌ ${item.originalName}</h4>
+                            <p style="color: #d32f2f; margin-top: 10px;">${item.error}</p>
+                        </div>
+                    `;
+                }
+            });
+            
+            html += '</div>';
+
+            if (successCount === 0) {
+                html += `
+                    <div style="text-align: center; margin-top: 20px;">
+                        <button class="btn reset-btn" onclick="resetForm()">🔄 Try Again</button>
+                    </div>
+                `;
+            }
+
+            document.getElementById('resultMessage').innerHTML = html;
+        }
+
+        function downloadImage(url, filename) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+        }
+
+        function downloadAllImages() {
+            // This could be enhanced to create a ZIP file, but for now download individually
+            const successfulResults = selectedFiles.map((_, index) => document.querySelectorAll('.result-success .btn')[index]).filter(btn => btn);
+            successfulResults.forEach(btn => btn.click());
+        }
+
+        function resetForm() {
+            selectedFiles = [];
+            fileInput.value = '';
+            previewSection.style.display = 'none';
+            processingSection.style.display = 'none';
+            resultSection.style.display = 'none';
+            processBtn.disabled = false;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+    </script>
+</body>
+</html>
