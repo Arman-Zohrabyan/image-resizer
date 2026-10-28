@@ -1,0 +1,8 @@
+# Installed by npm install — never committed.
+node_modules/
+
+# Output of the resizer; server.js recreates the folder on start.
+processed_images/
+
+# macOS Finder metadata.
+.DS_Store
