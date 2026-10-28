@@ -3,6 +3,7 @@ const multer = require('multer');
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs').promises;
+const { removeBackground } = require('@imgly/background-removal-node');
 
 const app = express();
 const PORT = 3000;
@@ -30,51 +31,65 @@ const sanitizeFilename = (filename) => {
     .substring(0, 100); // Limit length
 };
 
-// Function to compress image to under 100KB
-const compressToTarget = async (buffer, targetSizeKB = 100) => {
+const ALLOWED_FITS = ['cover', 'contain', 'fill', 'inside', 'outside'];
+
+// Resize an image and compress it under a target file size.
+const compressToTarget = async (buffer, { width, height, fit, targetSizeKB, brightness, removeBg }) => {
   const targetSizeBytes = targetSizeKB * 1024;
-  let quality = 95;
-  let compressed;
-  
-  while (quality > 10) {
-    compressed = await sharp(buffer)
-      .resize(720, 480, { fit: 'cover' })
-      .webp({
-        quality: quality,
-        effort: 6,
-        smartSubsample: true
-      })
+
+  let workingBuffer = buffer;
+  if (removeBg) {
+    // The library decodes by MIME and a raw Buffer arrives without one.
+    // Re-encode through sharp to a known PNG so detection always works.
+    const pngBuffer = await sharp(buffer).png().toBuffer();
+    const inputBlob = new Blob([pngBuffer], { type: 'image/png' });
+    const blob = await removeBackground(inputBlob, { output: { format: 'image/png' } });
+    workingBuffer = Buffer.from(await blob.arrayBuffer());
+  }
+
+  // Resize once into a raw pixel buffer; re-encoding in the loop is then cheap.
+  const resizeOpts = {
+    fit,
+    background: removeBg
+      ? { r: 0, g: 0, b: 0, alpha: 0 }
+      : { r: 255, g: 255, b: 255, alpha: 1 },
+  };
+  let pipeline = sharp(workingBuffer).resize(width, height, resizeOpts);
+
+  // Brightness: slider -100..+100 maps to Sharp's multiplier (0 -> unchanged).
+  if (brightness !== 0) {
+    pipeline = pipeline.modulate({ brightness: 1 + brightness / 100 });
+  }
+
+  const { data, info } = await pipeline
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const encode = (quality) =>
+    sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } })
+      .webp({ quality, effort: 4, smartSubsample: true })
       .withMetadata({
         exif: {
           IFD0: {
-            Copyright: '© 2025 Arman Zohrabyan',
+            Copyright: '© 2026 Arman Zohrabyan',
             Creator: 'Arman Zohrabyan',
           }
         }
       })
       .toBuffer();
-    
+
+  let quality = 95;
+  let compressed;
+
+  while (quality >= 10) {
+    compressed = await encode(quality);
     if (compressed.length <= targetSizeBytes) {
-      return { buffer: compressed, quality, finalSize: compressed.length };
+      return { buffer: compressed, quality, finalSize: compressed.length, width: info.width, height: info.height };
     }
-    
-    quality -= 2; // Reduce quality by 2% each iteration
+    quality -= 5;
   }
-  
-  // If still too large, try with minimal quality
-  compressed = await sharp(buffer)
-    .resize(720, 480, { 
-      fit: 'cover',        // Crop centered, maintain aspect ratio
-    })
-    .webp({
-      quality: 10,
-      effort: 6,
-      smartSubsample: false
-    })
-    .withMetadata({})
-    .toBuffer();
-  
-  return { buffer: compressed, quality: 10, finalSize: compressed.length };
+
+  return { buffer: compressed, quality: 10, finalSize: compressed.length, width: info.width, height: info.height };
 };
 
 // Serve static files (client)
@@ -91,26 +106,44 @@ const ensureOutputDir = async () => {
 };
 
 // Image processing endpoint - support multiple files
-app.post('/api/process-image', upload.array('images', 20), async (req, res) => {
+app.post('/api/process-image', upload.array('images', 200), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No image files provided' });
     }
 
+    // Read and validate processing settings from the form
+    const width = parseInt(req.body.width, 10) || 600;
+    const height = parseInt(req.body.height, 10) || 900;
+    const targetSizeKB = parseInt(req.body.maxKB, 10) || 100;
+    const fit = ALLOWED_FITS.includes(req.body.fit) ? req.body.fit : 'cover';
+    // Brightness: -100..+100, defaults to 0 (no change), clamped to range.
+    let brightness = parseInt(req.body.brightness, 10);
+    if (Number.isNaN(brightness)) brightness = 0;
+    brightness = Math.min(100, Math.max(-100, brightness));
+    const removeBg = req.body.removeBg === 'true';
+
+    if (width < 1 || width > 5000 || height < 1 || height > 5000) {
+      return res.status(400).json({ error: 'Width and height must be between 1 and 5000' });
+    }
+    if (targetSizeKB < 1 || targetSizeKB > 10000) {
+      return res.status(400).json({ error: 'Max size must be between 1 and 10000 KB' });
+    }
+
+    const settings = { width, height, fit, targetSizeKB, brightness, removeBg };
     const results = [];
-    
+
     for (const file of req.files) {
       try {
         const { buffer, originalname } = file;
 
-        // Compress image to under 50KB
-        console.log(`Processing ${originalname}...`);
-        const compressionResult = await compressToTarget(buffer, 50);
+        console.log(`Processing ${originalname} -> ${width}x${height} (${fit}, <=${targetSizeKB}KB${removeBg ? ', bg-removed' : ''})...`);
+        const compressionResult = await compressToTarget(buffer, settings);
         
         // Sanitize filename and preserve original name
         const sanitizedName = sanitizeFilename(originalname);
         const nameWithoutExt = sanitizedName.replace(/\.[^/.]+$/, "");
-        const processedFilename = `${nameWithoutExt}${compressionResult.quality > 75 ? '' : '_bad'}.webp`;
+        const processedFilename = `${nameWithoutExt}.webp`;
         const outputPath = path.join(OUTPUT_DIR, processedFilename);
         
         // Save the compressed image
@@ -118,7 +151,7 @@ app.post('/api/process-image', upload.array('images', 20), async (req, res) => {
         
         // Get file stats
         const stats = await fs.stat(outputPath);
-        
+
         results.push({
           success: true,
           originalName: originalname,
@@ -126,8 +159,9 @@ app.post('/api/process-image', upload.array('images', 20), async (req, res) => {
           size: stats.size,
           sizeKB: Math.round(stats.size / 1024),
           quality: compressionResult.quality,
-          dimensions: '720x480',
+          dimensions: `${compressionResult.width}x${compressionResult.height}`,
           format: 'WebP',
+          targetSizeKB,
           downloadUrl: `/download/${processedFilename}`
         });
 
